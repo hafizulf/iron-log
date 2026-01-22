@@ -11,9 +11,20 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('logs', function (Blueprint $table) {
-            $table->id();
-            $table->timestamps();
+        Schema::create('audit_logs', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->uuid('actor_id')->nullable();
+            $table->string('action');
+            $table->string('resource_type');
+            $table->string('resource_id');
+            $table->jsonb('payload');
+            $table->char('checksum', 64);
+            $table->timestampTz('created_at')->useCurrent();
+
+            $table->index('actor_id');
+            $table->index(['resource_type', 'resource_id']);
+            $table->index('created_at');
+            $table->index('payload', null, 'gin');
         });
     }
 
@@ -22,6 +33,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('logs');
+        Schema::dropIfExists('audit_logs');
     }
 };
