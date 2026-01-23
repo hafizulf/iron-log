@@ -21,6 +21,20 @@ class AuditLogController extends Controller
             'payload'        => ['nullable', 'array'],
         ]);
 
+        $requestId = $request->header('X-Request-Id');
+        if (!$requestId || !Str::isUuid($requestId)) {
+            return response()->json([
+                'message' => 'X-Request-Id must be a valid UUID',
+                'errors' => ['request_id' => ['X-Request-Id must be a valid UUID']],
+            ], 422);
+        }
+
+        // for idempotency
+        $existing = AuditLog::where('request_id', $requestId)->first();
+        if ($existing) {
+            return response()->json(['data' => $existing], 200);
+        }
+
         $id = (string) Str::uuid();
         $actorId = $data['actor_id'] ?? null;
         $payload = $data['payload'] ?? [];
@@ -28,6 +42,7 @@ class AuditLogController extends Controller
 
         $checksumInput = $this->canonicalJson([
             'id'            => $id,
+            'request_id'    => $requestId,
             'actor_id'      => $actorId,
             'action'        => $data['action'],
             'resource_type' => $data['resource_type'],
@@ -39,17 +54,19 @@ class AuditLogController extends Controller
 
         $log = AuditLog::create([
             'id'            => $id,
+            'request_id'    => $requestId,
             'actor_id'      => $actorId,
             'action'        => $data['action'],
             'resource_type' => $data['resource_type'],
             'resource_id'   => $data['resource_id'],
             'payload'       => $payloadSorted,
             'checksum'      => $checksum,
-        ]);
+        ])->refresh(); // Re-query the same record
+
+        Log::info('Audit log created', ['data' => $log->toArray()]);
 
         return response()->json([
-            'ok' => true,
-            'id' => $log->getAttribute('id'),
+            'data' => $log
         ], 201);
     }
 
