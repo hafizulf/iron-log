@@ -1,66 +1,271 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# PROJECT: AUDIT-GRADE ACTIVITY LOG API
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+API-only backend built with Laravel 11 for audit-grade,
+tamper-evident activity logging.
 
-## About Laravel
+This repository is intentionally backend-focused.
+No UI, no sessions, no cookies.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+------------------------------------------------------------
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## PROJECT GOALS
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+This project demonstrates an audit logging system.
 
-## Learning Laravel
+Primary goals:
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+- append-only data model
+- tamper-evident storage
+- idempotent write operations
+- deterministic serialization
+- testable integrity guarantees
 
-You may also try the [Laravel Bootcamp](https://bootcamp.laravel.com), where you will be guided through building a modern Laravel application from scratch.
+------------------------------------------------------------
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+## CORE CONCEPTS
 
-## Laravel Sponsors
+### Append-only logs
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+Audit logs are never updated or deleted by application logic.
+Any modification must be detectable.
 
-### Premium Partners
+### Tamper-evident design
 
-- **[Vehikl](https://vehikl.com/)**
-- **[Tighten Co.](https://tighten.co)**
-- **[WebReinvent](https://webreinvent.com/)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel/)**
-- **[Cyber-Duck](https://cyber-duck.co.uk)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Jump24](https://jump24.co.uk)**
-- **[Redberry](https://redberry.international/laravel/)**
-- **[Active Logic](https://activelogic.com)**
-- **[byte5](https://byte5.de)**
-- **[OP.GG](https://op.gg)**
+Each log row stores a cryptographic checksum.
+Recomputing the checksum allows detection of data tampering.
 
-## Contributing
+### Idempotent writes
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+Requests using the same X-Request-Id header
+will not create duplicate audit log entries.
 
-## Code of Conduct
+### Deterministic serialization
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+Payloads are canonicalized before hashing
+to ensure stable and reproducible checksums.
 
-## Security Vulnerabilities
+------------------------------------------------------------
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+## TECH STACK
 
-## License
+- PHP 8.2+
+- Laravel 11 (API-only usage)
+- PostgreSQL (production database)
+- SQLite (testing database)
+- PHPUnit (feature testing)
+- Docker (optional, for PostgreSQL)
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+------------------------------------------------------------
+
+## LARAVEL 11 NOTES
+
+- This project uses Laravel 11 minimal structure
+- No Blade templates or web middleware are used
+- routes/api.php is the primary entry point
+- All endpoints are stateless
+
+------------------------------------------------------------
+
+## DIRECTORY STRUCTURE
+
+```plaintex
+.
+app/
+├── Http
+│   └── Controllers
+│       └── Api
+│           └── AuditLogController.php   // store, index, verify endpoints
+└── Models
+    └── AuditLog.php                     // append-only audit log model
+
+database/
+├── migrations                            // audit_logs schema and indexes
+└── factories                             // test data factories
+
+tests/
+└── Feature                               // API-level tests
+
+routes/
+└── api.php                               // API routes
+.
+```
+
+------------------------------------------------------------
+
+## INSTALLATION
+
+### Clone repository
+
+```sh
+git clone <repo-url>
+cd <repo-name>
+```
+
+### Install dependencies
+
+```sh
+composer install
+```
+
+### Environment setup
+
+```sh
+cp .env.example .env
+php artisan key:generate
+```
+
+------------------------------------------------------------
+
+## DATABASE SETUP
+
+### Option A: PostgreSQL (recommended)
+
+```sh
+# run docker
+docker compose up -d
+
+# Example .env configuration:
+DB_CONNECTION=pgsql
+DB_HOST=127.0.0.1
+DB_PORT=5432
+DB_DATABASE=audit_logs
+DB_USERNAME=postgres
+DB_PASSWORD=postgres
+
+# Run migrations:
+php artisan migrate
+
+### Option B: SQLite (local/testing
+DB_CONNECTION=sqlite
+DB_DATABASE=database/database.sqlite
+
+touch database/database.sqlite
+php artisan migrate
+```
+
+------------------------------------------------------------
+
+## RUNNING THE APPLICATION
+
+```sh
+php artisan serve
+```
+
+Base API URL:
+http:localhost:8000/api
+
+------------------------------------------------------------
+
+## API ENDPOINTS
+
+### Create audit log (idempotent)
+
+```sh
+POST /api/audit-logs
+
+Headers:
+X-Request-Id: <uuid>
+Content-Type: application/json
+
+Body:
+{
+  "action": "user.login",
+  "resource_type": "user",
+  "resource_id": "123",
+  "payload": {
+    "ip": "127.0.0.1"
+  }
+}
+```
+
+------------------------------------------------------------
+
+### List audit logs
+
+```sh
+GET /api/logs
+
+Query parameters:
+
+- from / to (date range)
+- actor_id
+- action
+- limit
+- cursor
+
+# Example:
+GET /api/logs?action=user.login&limit=25
+```
+
+------------------------------------------------------------
+
+### Verify audit log integrity
+
+```sh
+GET /api/audit-logs/{id}/verify
+
+Response:
+{
+  "data": {
+    "id": "...",
+    "valid": true
+  }
+}
+```
+
+If the record was tampered with,
+the valid flag will be false.
+
+------------------------------------------------------------
+
+## TESTING
+
+Tests use SQLite and reset the database
+on every test run.
+
+```sh
+# Run all tests:
+php artisan test
+
+# Run a specific test:
+php artisan test --filter=AuditLogVerifyApiTest
+```
+
+------------------------------------------------------------
+
+## CODE COVERAGE
+
+Requires Xdebug or PCOV.
+
+```sh
+# With Xdebug enabled:
+php artisan test --coverage
+
+# HTML report:
+php artisan test --coverage-html coverage
+```
+
+------------------------------------------------------------
+
+## DESIGN NOTES
+
+- Stateless API
+- No session storage
+- No UI rendering
+- Database constraints are part of the integrity model
+- Tampering is detectable, not prevented
+
+------------------------------------------------------------
+
+## INTENDED AUDIENCE
+
+- Backend engineers
+- System designers
+- Developers learning audit/compliance concepts
+- Anyone wanting to understand logging beyond CRUD
+
+------------------------------------------------------------
+
+## LICENSE
+
+MIT (adjust as needed)

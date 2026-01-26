@@ -11,6 +11,34 @@ class AuditLogVerifyApiTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_verify_rejects_invalid_uuid(): void
+    {
+        $invalidId = 'not-a-uuid';
+
+        $res = $this->getJson("/api/audit-logs/{$invalidId}/verify");
+
+        $res->assertStatus(422);
+        $res->assertJson([
+            'message' => 'Id must be a valid UUID',
+        ]);
+
+        $this->assertArrayHasKey('errors', $res->json());
+        $this->assertArrayHasKey('id', $res->json('errors'));
+    }
+
+    public function test_verify_returns_404_when_log_not_found(): void
+    {
+        $nonExistingId = (string) Str::uuid();
+
+        $res = $this->getJson("/api/audit-logs/{$nonExistingId}/verify");
+
+        $res->assertStatus(404);
+        $res->assertJson([
+            'message' => 'Log not found',
+        ]);
+    }
+
+
     public function test_it_verifies_log_is_valid(): void
     {
         // Create log through API (so checksum is consistent with store())
