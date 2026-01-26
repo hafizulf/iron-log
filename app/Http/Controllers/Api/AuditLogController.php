@@ -230,4 +230,56 @@ class AuditLogController extends Controller
             ],
         ]);
     }
+
+    public function verify(string $id): JsonResponse
+    {
+        if(!Str::isUuid($id)) {
+            return response()->json([
+                'message' => 'Id must be a valid UUID',
+                'errors'  => ['id' => ['Id must be a valid UUID']],
+            ], 422);
+        }
+
+        $log = AuditLog::find($id);
+
+        if (!$log) {
+            return response()->json([
+                'message' => 'Log not found',
+            ], 404);
+        }
+
+        $expected = $this->computeChecksumForLog($log);
+        $stored = (string) $log->checksum;
+
+        $valid = hash_equals($stored, $expected);
+
+        return response()->json([
+            'data' => [
+                'id' => $log->id,
+                'valid' => $valid,
+                'stored_checksum' => $stored,
+                'expected_checksum' => $expected,
+            ],
+        ], 200);
+    }
+
+    /**
+     * IMPORTANT: must match the exact checksum formula used in store()
+     */
+    private function computeChecksumForLog(AuditLog $log): string
+    {
+        $payloadSorted = $this->deepKsort($log->payload ?? []);
+
+        $input = $this->canonicalJson([
+            'id'            => $log->id,
+            'request_id'    => $log->request_id,
+            'actor_id'      => $log->actor_id ?? null,
+            'action'        => $log->action,
+            'resource_type' => $log->resource_type,
+            'resource_id'   => $log->resource_id,
+            'payload'       => $payloadSorted,
+        ]);
+
+        return hash('sha256', $input);
+    }
 }
