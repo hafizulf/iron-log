@@ -25,49 +25,69 @@ class AuditLogController extends Controller
         if (!$requestId || !Str::isUuid($requestId)) {
             return response()->json([
                 'message' => 'X-Request-Id must be a valid UUID',
-                'errors' => ['request_id' => ['X-Request-Id must be a valid UUID']],
+                'errors'  => ['request_id' => ['X-Request-Id must be a valid UUID']],
             ], 422);
         }
 
-        // for idempotency
-        $existing = AuditLog::where('request_id', $requestId)->first();
-        if ($existing) {
-            return response()->json(['data' => $existing], 200);
-        }
-
-        $id = (string) Str::uuid();
         $actorId = $data['actor_id'] ?? null;
         $payload = $data['payload'] ?? [];
         $payloadSorted = $this->deepKsort($payload);
 
-        $checksumInput = $this->canonicalJson([
+        $fingerprint = hash('sha256', $this->canonicalJson([
+            ...$data,
+            'actor_id'      => $actorId,
+            'payload'       => $payloadSorted,
+        ]));
+
+        // checksum: untuk row yang disimpan
+        $id = (string) Str::uuid();
+        $checksum = hash('sha256', $this->canonicalJson([
+            ...$data,
             'id'            => $id,
             'request_id'    => $requestId,
             'actor_id'      => $actorId,
-            'action'        => $data['action'],
-            'resource_type' => $data['resource_type'],
-            'resource_id'   => $data['resource_id'],
             'payload'       => $payloadSorted,
-        ]);
+        ]));
 
-        $checksum = hash('sha256', $checksumInput);
+        try {
+            $log = AuditLog::create([
+                ...$data,
+                'id'         => $id,
+                'request_id' => $requestId,
+                'actor_id'   => $actorId,
+                'payload'    => $payloadSorted,
+                'checksum'   => $checksum,
+            ])->refresh();
 
-        $log = AuditLog::create([
-            'id'            => $id,
-            'request_id'    => $requestId,
-            'actor_id'      => $actorId,
-            'action'        => $data['action'],
-            'resource_type' => $data['resource_type'],
-            'resource_id'   => $data['resource_id'],
-            'payload'       => $payloadSorted,
-            'checksum'      => $checksum,
-        ])->refresh(); // Re-query the same record
+            Log::info('Audit log created', ['data' => $log->toArray()]);
+            return response()->json(['data' => $log], 201);
 
-        Log::info('Audit log created', ['data' => $log->toArray()]);
+        } catch (\Illuminate\Database\QueryException $e) {
+            $existing = AuditLog::where('request_id', $requestId)->first();
 
-        return response()->json([
-            'data' => $log
-        ], 201);
+            if (!$existing) {
+                throw $e;
+            }
+
+            $existingFingerprint = hash('sha256', $this->canonicalJson([
+                'actor_id'      => $existing->actor_id,
+                'action'        => $existing->action,
+                'resource_type' => $existing->resource_type,
+                'resource_id'   => $existing->resource_id,
+                'payload'       => $this->deepKsort($existing->payload ?? []),
+            ]));
+
+            if (!hash_equals($existingFingerprint, $fingerprint)) {
+                return response()->json([
+                    'message' => 'X-Request-Id was already used with a different request body.',
+                    'errors'  => [
+                        'request_id' => ['Duplicate X-Request-Id with different body.'],
+                    ],
+                ], 409);
+            }
+
+            return response()->json(['data' => $existing], 200);
+        }
     }
 
     private function canonicalJson(array $value): string
@@ -100,6 +120,6 @@ class AuditLogController extends Controller
     private function isAssoc(array $arr): bool
     {
         $keys = array_keys($arr);
-        return $keys !== range(0, count($arr) - 1);
+        return $keys !== range(0, \count($arr) - 1);
     }
 }
