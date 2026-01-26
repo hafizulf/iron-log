@@ -2,5 +2,7 @@
 
 use App\Http\Controllers\Api\AuditLogController;
 
-Route::post('/audit-logs', [AuditLogController::class, 'store']);
-
+Route::prefix('audit-logs')->group(function () {
+    Route::post('/', [AuditLogController::class, 'store']);
+    Route::get('/', [AuditLogController::class, 'index']);
+});

@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use App\Models\AuditLog;
 
@@ -121,5 +123,95 @@ class AuditLogController extends Controller
     {
         $keys = array_keys($arr);
         return $keys !== range(0, \count($arr) - 1);
+    }
+
+    public function index(Request $request): JsonResponse
+    {
+        $v = Validator::make($request->query(), [
+            'from'      => ['nullable', 'date'],
+            'to'        => ['nullable', 'date'],
+            'actor_id'  => ['nullable', 'uuid'],
+            'action'    => ['nullable', 'string', 'max:255'],
+            'limit'     => ['nullable', 'integer', 'min:1', 'max:100'],
+            'cursor'    => ['nullable', 'string'], // format: "<created_at>|<id>"
+            'ip'        => ['nullable', 'ip'],
+        ]);
+
+        if ($v->fails()) {
+            return response()->json([
+                'message' => 'Invalid query parameters.',
+                'errors'  => $v->errors(),
+            ], 422);
+        }
+
+        $limit = (int) ($request->query('limit', 25));
+
+        $q = AuditLog::query();
+
+        // filters
+        if ($request->filled('from')) {
+            $from = Carbon::parse($request->query('from'))->startOfSecond();
+            $q->where('created_at', '>=', $from);
+        }
+
+        if ($request->filled('to')) {
+            $to = Carbon::parse($request->query('to'))->endOfSecond();
+            $q->where('created_at', '<=', $to);
+        }
+
+        if ($request->filled('actor_id')) {
+            $q->where('actor_id', $request->query('actor_id'));
+        }
+
+        if ($request->filled('action')) {
+            $q->where('action', 'ilike', '%'.$request->query('action').'%');
+        }
+
+        // JSONB query - filter logs where payload.ip == query ip
+        if ($request->filled('ip')) {
+            $q->where('payload->ip', $request->query('ip'));
+        }
+
+        // cursor pagination (created_at DESC, id DESC)
+        if ($request->filled('cursor')) {
+            // cursor: "2026-01-26T04:01:17.000000Z|76c250a9-1138-4746-a6d3-b6afd27bdeda"
+            $cursor = $request->query('cursor');
+            [$cursorCreatedAt, $cursorId] = array_pad(explode('|', $cursor, 2), 2, null);
+
+            if ($cursorCreatedAt && $cursorId) {
+                $q->where(function ($w) use ($cursorCreatedAt, $cursorId) {
+                    $w->where('created_at', '<', $cursorCreatedAt)
+                        ->orWhere(function ($w2) use ($cursorCreatedAt, $cursorId) {
+                            $w2->where('created_at', '=', $cursorCreatedAt)
+                                ->where('id', '<', $cursorId);
+                        });
+                });
+            }
+        }
+
+        $items = $q->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->limit($limit + 1) // fetch one extra to know has_more for next page
+            ->get();
+
+        $hasMore = $items->count() > $limit;
+        if ($hasMore) {
+            $items = $items->take($limit);
+        }
+
+        $nextCursor = null;
+        if ($hasMore && $items->isNotEmpty()) {
+            $last = $items->last();
+            $nextCursor = $last->created_at->toISOString() . '|' . $last->id;
+        }
+
+        return response()->json([
+            'data' => $items,
+            'meta' => [
+                'limit' => $limit,
+                'has_more' => $hasMore,
+                'next_cursor' => $nextCursor,
+            ],
+        ]);
     }
 }
