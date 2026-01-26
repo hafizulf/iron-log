@@ -7,7 +7,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
-class AuditLogApiTest extends TestCase
+class AuditLogStoreApiTest extends TestCase
 {
     use RefreshDatabase;
 
@@ -125,40 +125,5 @@ class AuditLogApiTest extends TestCase
 
         $res->assertStatus(409);
         $this->assertDatabaseCount('audit_logs', 1);
-    }
-
-    public function test_it_return_logs_list(): void
-    {
-        AuditLog::create([
-            'id' => Str::uuid(),
-            'request_id' => Str::uuid(),
-            'actor_id' => null,
-            'action' => 'user.login',
-            'resource_type' => 'user',
-            'resource_id' => '123',
-            'payload' => ['ip' => '127.0.0.1'],
-            'checksum' => hash('sha256', 'dummy'),
-        ]);
-
-        $res = $this->getJson('/api/audit-logs');
-        $res->assertOk();
-
-        $data = $res->json('data');
-
-        $this->assertIsArray($data);
-        $this->assertNotEmpty($data);
-
-        $first = $data[0];
-
-        $this->assertNotEmpty(data_get($first, 'id'));
-        $this->assertNotEmpty(data_get($first, 'request_id'));
-        $this->assertNotEmpty(data_get($first, 'action'));
-        $this->assertNotEmpty(data_get($first, 'resource_type'));
-        $this->assertNotEmpty(data_get($first, 'resource_id'));
-        $this->assertNotEmpty(data_get($first, 'payload'));
-        $this->assertNotEmpty(data_get($first, 'checksum'));
-        $this->assertNotEmpty(data_get($first, 'created_at'));
-
-        $this->assertTrue(\array_key_exists('actor_id', $first));
     }
 }

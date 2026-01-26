@@ -61,7 +61,6 @@ class AuditLogController extends Controller
                 'checksum'   => $checksum,
             ])->refresh();
 
-            Log::info('Audit log created', ['data' => $log->toArray()]);
             return response()->json(['data' => $log], 201);
 
         } catch (\Illuminate\Database\QueryException $e) {
