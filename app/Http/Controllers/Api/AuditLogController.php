@@ -163,7 +163,11 @@ class AuditLogController extends Controller
         }
 
         if ($request->filled('action')) {
-            $q->where('action', 'ilike', '%'.$request->query('action').'%');
+            // $q->where('action', 'ilike', '%'.$request->query('action').'%');
+
+            // run for sqlite too
+            $term = mb_strtolower($request->query('action'));
+            $q->whereRaw('LOWER(action) LIKE ?', ['%' . $term . '%']);
         }
 
         // JSONB query - filter logs where payload.ip == query ip
@@ -178,12 +182,14 @@ class AuditLogController extends Controller
             [$cursorCreatedAt, $cursorId] = array_pad(explode('|', $cursor, 2), 2, null);
 
             if ($cursorCreatedAt && $cursorId) {
+                $cursorCreatedAt = Carbon::parse($cursorCreatedAt);
+
                 $q->where(function ($w) use ($cursorCreatedAt, $cursorId) {
                     $w->where('created_at', '<', $cursorCreatedAt)
                         ->orWhere(function ($w2) use ($cursorCreatedAt, $cursorId) {
                             $w2->where('created_at', '=', $cursorCreatedAt)
                                 ->where('id', '<', $cursorId);
-                        });
+                    });
                 });
             }
         }
@@ -203,6 +209,17 @@ class AuditLogController extends Controller
             $last = $items->last();
             $nextCursor = $last->created_at->toISOString() . '|' . $last->id;
         }
+
+        Log::debug('AuditLogController::index', [
+            response()->json([
+                'data' => $items,
+                'meta' => [
+                    'limit' => $limit,
+                    'has_more' => $hasMore,
+                    'next_cursor' => $nextCursor,
+                ],
+            ])
+        ]);
 
         return response()->json([
             'data' => $items,
