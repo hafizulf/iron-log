@@ -48,7 +48,7 @@ to ensure stable and reproducible checksums.
 
 ## TECH STACK
 
-- PHP 8.2+
+- PHP 8.4
 - Laravel 11 (API-only usage)
 - PostgreSQL (production database)
 - SQLite (testing database)
@@ -118,7 +118,7 @@ php artisan key:generate
 
 ## DATABASE SETUP
 
-### Option A: PostgreSQL (recommended)
+### PostgreSQL
 
 ```sh
 # run docker
@@ -134,13 +134,16 @@ DB_PASSWORD=postgres
 
 # Run migrations:
 php artisan migrate
+```
 
-### Option B: SQLite (local/testing
+## SQLite (testing)
+
+```sh
 DB_CONNECTION=sqlite
-DB_DATABASE=database/database.sqlite
+DB_DATABASE=:memory:
 
-touch database/database.sqlite
-php artisan migrate
+CACHE_STORE=array
+...
 ```
 
 ------------------------------------------------------------
@@ -226,6 +229,9 @@ on every test run.
 ```sh
 # Run all tests:
 php artisan test
+
+# Run test for feature only:
+php artisan test --testsuite=Feature
 
 # Run a specific test:
 php artisan test --filter=AuditLogVerifyApiTest
